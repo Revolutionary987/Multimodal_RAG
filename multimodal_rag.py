@@ -1,6 +1,7 @@
 import os
 import json
 from typing import List
+from langchain.messages import SystemMessage,HumanMessage
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -54,6 +55,7 @@ def separate_contents(chunks):
                 if element_type=="table":
                     content_data["types"].append('table')
                     # getattr(object, attribute, default_value): It tries get the text_as_html. If it doesn't exist, don't crash—just give me the standard element.text instead."
+                    # Why llm understands html better so if we do this we can senf it directly to llm
                     html_table=getattr(chunk.metadata,'table_as_html',element.text)
                     content_data["tables"].append(html_table)
                 elif element_type=="image":
@@ -63,4 +65,36 @@ def separate_contents(chunks):
 
         content_data["types"]=list(set(content_data['types']))
     return content_data
+
+def create_summary(text:str,tables:List[str],images:List[str])->str:
+    try:
+        model=ChatGoogleGenerativeAI(model="gemini-2.5-flash",temperature=0)
+        prompt=f"""You are an expert technical assistant. Analyze the following content 
+        and generate a highly detailed, searchable summary.
+        Include key facts, metrics, and describe any visual anomalies.
+        
+        TEXT:
+        {text}
+        
+        TABLES:
+        {tables}
+
+        """
+        message_content = [
+            {"type": "text", "text": prompt}
+        ]
+        # Llm talks to json not binary files so we use langchain document(Looks same)
+        for img_base64 in images:
+            message_content.append[{
+                "type":"image_url",
+                "image_url":{"url":f"data:image/jpeg;base64,{img_base64}"}
+            }]
+        message=HumanMessage(content=message_content)
+        response=model.invoke(message)
+        return response.content
+    except Exception as e:
+        return (f"Summary failed due to {e}")
+
+    
+
 
