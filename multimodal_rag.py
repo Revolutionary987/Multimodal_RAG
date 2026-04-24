@@ -9,6 +9,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from unstructured.partition.pdf import partition_pdf
 from unstructured.chunking.title import chunk_by_title
 from dotenv import load_dotenv
+import unstructured_pytesseract
+unstructured_pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+
 load_dotenv()
 
 model=ChatGoogleGenerativeAI(model="gemini-2.5-flash",temperature=0)
@@ -37,19 +41,19 @@ def chunk_doc(elements):
         overlap=200
     )
     return chunks
-def separate_contents(chunks):
+def separate_contents(chunk):
     content_data={
         "text":[],
         "tables":[],
         "images":[],
         "types":[] # Tells what kind of data is present in the chunk
     }
-    for chunk in chunks:
+    
         # Ensures only text is present and not empty string
-        if hasattr(chunk,'text') and chunk.text:
+    if hasattr(chunk,'text') and chunk.text:
             content_data["text"].append(chunk.text)
             # The orig_elements attribute is a Python list kept inside the chunk's metadata that remembers exactly which individual pieces were put into that box.
-        if hasattr(chunk,'metadata') and hasattr(chunk.metadata,'orig_elements'):
+    if hasattr(chunk,'metadata') and hasattr(chunk.metadata,'orig_elements'):
             for element in chunk.metadata.orig_elements:
                 #type(element).__name__ simply gets the name of the item as a string (e.g., "Table", "Image")
                 element_type=type(element).__name__
@@ -65,7 +69,7 @@ def separate_contents(chunks):
                         content_data["types"].append('images')
                         content_data["images"].append(element.metadata.image_base64)
 
-        content_data["types"]=list(set(content_data['types']))
+    content_data["types"]=list(set(content_data['types']))
     return content_data
 # This is for embedding model
 def create_summary(text:str,tables:List[str],images:List[str])->str:
@@ -92,7 +96,7 @@ def create_summary(text:str,tables:List[str],images:List[str])->str:
                 "image_url":{"url":f"data:image/jpeg;base64,{img_base64}"}
             })
         message=HumanMessage(content=message_content)
-        response=model.invoke(message)
+        response=model.invoke([message])
         return response.content
     except Exception as e:
         return (f"Summary failed due to {e}")
@@ -119,8 +123,8 @@ def langdoc(chunks):
                 # Helpful to give images or table directly during retrieval
             "original_content":json.dumps({
                 'raw_text':content_data['text'],
-                'table_as_html':content_data['table'],
-                'base_64_image':content_data['image'],
+                'table_as_html':content_data['tables'],
+                'base_64_image':content_data['images'],
             }
         )
         })
@@ -175,7 +179,7 @@ def memory(query):
         question=query
     return question
 def chat(db):
-    retriever=db.as_retriever(search_kwargs={"k":3})
+    retriever=db.as_retriever(search_kwargs={"k":7})
     while(True):
         ques=input("Ask query")
         if 'quit' in ques.lower():
